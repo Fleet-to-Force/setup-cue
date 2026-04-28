@@ -1,0 +1,13 @@
+name: Setup CUE runtime
+description: Internal runtime action for setup-cue. Do not use directly.
+inputs:
+  version:
+    description: The CUE version to setup. Must be a valid version string like "v0.6.0", or "latest"
+    required: true
+    default: latest
+outputs:
+  cuectl-path:
+    description: Path to the cached CUE binary from the internal runtime
+runs:
+  using: node20
+  main: ../../dist/index.js
