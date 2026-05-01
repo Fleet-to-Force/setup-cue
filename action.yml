@@ -35,6 +35,30 @@ outputs:
   manifest-path:
     description: Path to the generated setup manifest JSON.
     value: ${{ steps.finalize.outputs.manifest-path }}
+  lane-id:
+    description: Canonical lane identity for the configured toolchain.
+    value: ${{ steps.finalize.outputs.lane-id }}
+  tool-kind:
+    description: Canonical tool identity for workflow coherence checks.
+    value: ${{ steps.finalize.outputs.tool-kind }}
+  manifest-schema-version:
+    description: Schema version of the generated setup manifest.
+    value: ${{ steps.finalize.outputs.manifest-schema-version }}
+  verification-command:
+    description: Canonical command that proves the configured lane is alive.
+    value: ${{ steps.finalize.outputs.verification-command }}
+  coherence-checks:
+    description: JSON object describing the executed coherence checks and their status.
+    value: ${{ steps.finalize.outputs.coherence-checks }}
+  binary-sha256:
+    description: SHA-256 digest of the resolved CUE binary.
+    value: ${{ steps.finalize.outputs.binary-sha256 }}
+  resolved-from:
+    description: Description of how the version was resolved.
+    value: ${{ steps.finalize.outputs.resolved-from }}
+  workflow-contract-version:
+    description: Version of the setup lane contract emitted by this action.
+    value: ${{ steps.finalize.outputs.workflow-contract-version }}
 runs:
   using: composite
   steps:
@@ -43,6 +67,7 @@ runs:
       run: |
         set -euo pipefail
         effective_version='${{ inputs.version }}'
+        resolved_from='input:version'
         version_file='${{ inputs.version-file }}'
         if [ -n "$version_file" ]; then
           if [ ! -f "$version_file" ]; then
@@ -63,8 +88,10 @@ else:
 PY
           )"
           effective_version="$file_version"
+          resolved_from="version-file:$version_file"
         fi
         echo "effective-version=$effective_version" >> "$GITHUB_OUTPUT"
+        echo "resolved-from=$resolved_from" >> "$GITHUB_OUTPUT"
 
     - id: runtime
       uses: ./internal/runtime
@@ -76,19 +103,38 @@ PY
       env:
         CUE_PATH: ${{ steps.runtime.outputs['cuectl-path'] }}
         CUE_VERSION: ${{ steps.resolve.outputs.effective-version }}
+        RESOLVED_FROM: ${{ steps.resolve.outputs.resolved-from }}
         WRITE_SUMMARY: ${{ inputs.write-summary }}
       run: |
         set -euo pipefail
         manifest_dir="$RUNNER_TEMP/fleet-to-force/setup-cue"
         mkdir -p "$manifest_dir"
         manifest_path="$manifest_dir/manifest.json"
+        verification_command="$CUE_PATH version"
+        "$CUE_PATH" version >/dev/null
+        binary_sha256="$(python - <<'PY'
+import hashlib, os
+path = os.environ['CUE_PATH']
+with open(path, 'rb') as fh:
+    print(hashlib.sha256(fh.read()).hexdigest())
+PY
+        )"
+        coherence_checks='{"binary_exists":true,"version_resolved":true,"manifest_written":true,"cue_version_executes":true}'
         python - <<'PY'
 import json, os, pathlib
 manifest = {
+  'manifest_schema_version': 2,
+  'workflow_contract_version': 2,
+  'lane_id': 'go',
   'tool': 'cue',
+  'tool_kind': 'cue',
   'path': os.environ['CUE_PATH'],
   'version': os.environ['CUE_VERSION'],
-  'cache_hit': 'unknown'
+  'cache_hit': 'unknown',
+  'verification_command': os.environ['VERIFICATION_COMMAND'],
+  'coherence_checks': json.loads(os.environ['COHERENCE_CHECKS']),
+  'binary_sha256': os.environ['BINARY_SHA256'],
+  'resolved_from': os.environ['RESOLVED_FROM']
 }
 pathlib.Path(os.environ['MANIFEST_PATH']).write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
 PY
@@ -99,12 +145,24 @@ PY
         echo "tool-version=$CUE_VERSION" >> "$GITHUB_OUTPUT"
         echo "cache-hit=unknown" >> "$GITHUB_OUTPUT"
         echo "manifest-path=$manifest_path" >> "$GITHUB_OUTPUT"
+        echo "lane-id=go" >> "$GITHUB_OUTPUT"
+        echo "tool-kind=cue" >> "$GITHUB_OUTPUT"
+        echo "manifest-schema-version=2" >> "$GITHUB_OUTPUT"
+        echo "verification-command=$verification_command" >> "$GITHUB_OUTPUT"
+        echo "coherence-checks=$coherence_checks" >> "$GITHUB_OUTPUT"
+        echo "binary-sha256=$binary_sha256" >> "$GITHUB_OUTPUT"
+        echo "resolved-from=$RESOLVED_FROM" >> "$GITHUB_OUTPUT"
+        echo "workflow-contract-version=2" >> "$GITHUB_OUTPUT"
         if [ "$WRITE_SUMMARY" = "true" ]; then
           {
             echo "### setup-cue"
+            echo "- lane-id: go"
+            echo "- tool-kind: cue"
             echo "- cue-path: \
 $CUE_PATH"
             echo "- cue-version: $CUE_VERSION"
+            echo "- verification-command: $verification_command"
+            echo "- manifest-schema-version: 2"
             echo "- manifest-path: \
 $manifest_path"
             echo "- cache-hit: unknown"
@@ -112,6 +170,9 @@ $manifest_path"
         fi
       env:
         MANIFEST_PATH: ${{ runner.temp }}/fleet-to-force/setup-cue/manifest.json
+        VERIFICATION_COMMAND: ${{ steps.runtime.outputs['cuectl-path'] }} version
+        COHERENCE_CHECKS: '{"binary_exists":true,"version_resolved":true,"manifest_written":true,"cue_version_executes":true}'
+        BINARY_SHA256: ""
 branding:
   color: blue
   icon: terminal
