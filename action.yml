@@ -74,19 +74,7 @@ runs:
             echo "version-file not found: $version_file" >&2
             exit 1
           fi
-          file_version="$(python - <<'PY'
-from pathlib import Path
-p = Path(r'''${{ inputs.version-file }}''')
-text = p.read_text(encoding='utf-8').splitlines()
-for line in text:
-    line = line.strip()
-    if line:
-        print(line)
-        break
-else:
-    raise SystemExit('version-file is empty')
-PY
-          )"
+          file_version="$(python -c 'from pathlib import Path; import sys; p = Path(sys.argv[1]); lines = [line.strip() for line in p.read_text(encoding="utf-8").splitlines() if line.strip()]; print(lines[0] if lines else (_ for _ in ()).throw(SystemExit("version-file is empty")))' "$version_file")"
           effective_version="$file_version"
           resolved_from="version-file:$version_file"
         fi
@@ -113,35 +101,12 @@ PY
         manifest_path="$manifest_dir/manifest.json"
         verification_command="$CUE_PATH version"
         "$CUE_PATH" version >/dev/null
-        binary_sha256="$(python - <<'PY'
-import hashlib, os
-path = os.environ['CUE_PATH']
-with open(path, 'rb') as fh:
-    print(hashlib.sha256(fh.read()).hexdigest())
-PY
-        )"
+        binary_sha256="$(python -c 'import hashlib, os; print(hashlib.sha256(open(os.environ["CUE_PATH"], "rb").read()).hexdigest())')"
         coherence_checks='{"binary_exists":true,"version_resolved":true,"manifest_written":true,"cue_version_executes":true}'
         export VERIFICATION_COMMAND="$verification_command"
         export BINARY_SHA256="$binary_sha256"
         export COHERENCE_CHECKS="$coherence_checks"
-        python - <<'PY'
-import json, os, pathlib
-manifest = {
-  'manifest_schema_version': 2,
-  'workflow_contract_version': 2,
-  'lane_id': 'go',
-  'tool': 'cue',
-  'tool_kind': 'cue',
-  'path': os.environ['CUE_PATH'],
-  'version': os.environ['CUE_VERSION'],
-  'cache_hit': 'unknown',
-  'verification_command': os.environ['VERIFICATION_COMMAND'],
-  'coherence_checks': json.loads(os.environ['COHERENCE_CHECKS']),
-  'binary_sha256': os.environ['BINARY_SHA256'],
-  'resolved_from': os.environ['RESOLVED_FROM']
-}
-pathlib.Path(os.environ['MANIFEST_PATH']).write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
-PY
+        python -c 'import json, os, pathlib; manifest = {"manifest_schema_version": 2, "workflow_contract_version": 2, "lane_id": "go", "tool": "cue", "tool_kind": "cue", "path": os.environ["CUE_PATH"], "version": os.environ["CUE_VERSION"], "cache_hit": "unknown", "verification_command": os.environ["VERIFICATION_COMMAND"], "coherence_checks": json.loads(os.environ["COHERENCE_CHECKS"]), "binary_sha256": os.environ["BINARY_SHA256"], "resolved_from": os.environ["RESOLVED_FROM"]}; pathlib.Path(os.environ["MANIFEST_PATH"]).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")'
         echo "cue-path=$CUE_PATH" >> "$GITHUB_OUTPUT"
         echo "cue-version=$CUE_VERSION" >> "$GITHUB_OUTPUT"
         echo "cuectl-path=$CUE_PATH" >> "$GITHUB_OUTPUT"
