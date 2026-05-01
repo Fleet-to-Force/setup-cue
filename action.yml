@@ -162,13 +162,11 @@ PY
             echo "### setup-cue"
             echo "- lane-id: go"
             echo "- tool-kind: cue"
-            echo "- cue-path: \
-$CUE_PATH"
+            echo "- cue-path: $CUE_PATH"
             echo "- cue-version: $CUE_VERSION"
             echo "- verification-command: $verification_command"
             echo "- manifest-schema-version: 2"
-            echo "- manifest-path: \
-$manifest_path"
+            echo "- manifest-path: $manifest_path"
             echo "- cache-hit: unknown"
           } >> "$GITHUB_STEP_SUMMARY"
         fi
