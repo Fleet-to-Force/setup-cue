@@ -105,6 +105,7 @@ PY
         CUE_VERSION: ${{ steps.resolve.outputs.effective-version }}
         RESOLVED_FROM: ${{ steps.resolve.outputs.resolved-from }}
         WRITE_SUMMARY: ${{ inputs.write-summary }}
+        MANIFEST_PATH: ${{ runner.temp }}/fleet-to-force/setup-cue/manifest.json
       run: |
         set -euo pipefail
         manifest_dir="$RUNNER_TEMP/fleet-to-force/setup-cue"
@@ -120,6 +121,9 @@ with open(path, 'rb') as fh:
 PY
         )"
         coherence_checks='{"binary_exists":true,"version_resolved":true,"manifest_written":true,"cue_version_executes":true}'
+        export VERIFICATION_COMMAND="$verification_command"
+        export BINARY_SHA256="$binary_sha256"
+        export COHERENCE_CHECKS="$coherence_checks"
         python - <<'PY'
 import json, os, pathlib
 manifest = {
@@ -168,11 +172,6 @@ $manifest_path"
             echo "- cache-hit: unknown"
           } >> "$GITHUB_STEP_SUMMARY"
         fi
-      env:
-        MANIFEST_PATH: ${{ runner.temp }}/fleet-to-force/setup-cue/manifest.json
-        VERIFICATION_COMMAND: ${{ steps.runtime.outputs['cuectl-path'] }} version
-        COHERENCE_CHECKS: '{"binary_exists":true,"version_resolved":true,"manifest_written":true,"cue_version_executes":true}'
-        BINARY_SHA256: ""
 branding:
   color: blue
   icon: terminal
